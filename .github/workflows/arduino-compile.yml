@@ -1,0 +1,108 @@
+name: Compile Arduino firmware
+
+on:
+  push:
+    paths:
+      - "targets/**"
+      - "lib/**"
+      - "scripts/compile.sh"
+      - "docs/LIBRARIES.md"
+      - ".github/workflows/arduino-compile.yml"
+  pull_request:
+    paths:
+      - "targets/**"
+      - "lib/**"
+      - "scripts/compile.sh"
+      - "docs/LIBRARIES.md"
+      - ".github/workflows/arduino-compile.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: arduino-compile-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Detect firmware sketches
+        id: detect
+        shell: bash
+        run: |
+          has_sketches=false
+          for target in esp8266 esp32 esp32cam; do
+            if [[ -f "targets/$target/$target.ino" ]]; then
+              has_sketches=true
+              break
+            fi
+          done
+          echo "has_sketches=$has_sketches" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Arduino CLI
+        if: steps.detect.outputs.has_sketches == 'true'
+        uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.1.1"
+
+      - name: Install ESP board cores
+        if: steps.detect.outputs.has_sketches == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          indexes="https://arduino.esp8266.com/stable/package_esp8266com_index.json,https://espressif.github.io/arduino-esp32/package_esp32_index.json"
+          arduino-cli core update-index --additional-urls "$indexes"
+          arduino-cli core install esp8266:esp8266 --additional-urls "$indexes"
+          arduino-cli core install esp32:esp32 --additional-urls "$indexes"
+
+      - name: Compile available targets
+        if: steps.detect.outputs.has_sketches == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p lib build
+          compiled=0
+
+          for target in esp8266 esp32 esp32cam; do
+            sketch="targets/$target/$target.ino"
+            if [[ ! -f "$sketch" ]]; then
+              echo "::notice::Skipping $target: $sketch is not present yet."
+              continue
+            fi
+
+            case "$target" in
+              esp8266) fqbn="esp8266:esp8266:nodemcuv2" ;;
+              esp32) fqbn="esp32:esp32:esp32" ;;
+              esp32cam) fqbn="esp32:esp32:esp32cam" ;;
+            esac
+
+            echo "Compiling $target ($fqbn)"
+            arduino-cli compile \
+              --fqbn "$fqbn" \
+              --libraries "$GITHUB_WORKSPACE/lib" \
+              --output-dir "$GITHUB_WORKSPACE/build/$target" \
+              "$GITHUB_WORKSPACE/targets/$target"
+            compiled=$((compiled + 1))
+          done
+
+          if [[ "$compiled" -eq 0 ]]; then
+            echo "::error::No supported firmware sketches were compiled."
+            exit 1
+          fi
+
+      - name: Report documentation-only state
+        if: steps.detect.outputs.has_sketches != 'true'
+        run: echo "::notice::No firmware sketches exist yet; Arduino compilation was skipped."
+
+      - name: Upload firmware build artifacts
+        if: steps.detect.outputs.has_sketches == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: arduino-firmware
+          path: build/*/
+          if-no-files-found: error

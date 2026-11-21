@@ -25,7 +25,7 @@ Phase 1 — fondasi workspace dan dokumentasi hardware. Lihat [phase1.md](./phas
 
 Lihat [prompt.md](./prompt.md) untuk instruksi AI yang dapat digunakan ulang saat membuat proyek berdasarkan profil hardware tersebut. Daftar sumber datasheet ada di [doc/SOURCES.md](./doc/SOURCES.md), dan kredit/lisensi aset gambar ada di [img/SOURCES.md](./img/SOURCES.md).
 
-Halaman referensi board untuk browser: [doc/index.html](./doc/index.html).
+Halaman referensi board untuk browser: [doc/index.html](./doc/index.html). GitHub Pages dideploy otomatis dari folder `doc/` beserta aset `img/` saat perubahan ke `main`.
 
 ## Gambar board
 
